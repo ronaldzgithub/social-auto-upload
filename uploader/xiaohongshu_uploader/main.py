@@ -3,15 +3,21 @@ from __future__ import annotations
 
 import asyncio
 import inspect
+import math
 import os
+import re
+import time
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
+from urllib.parse import unquote, urlsplit
 
 from patchright.async_api import Page
 from patchright.async_api import Playwright
 from patchright.async_api import async_playwright
 
 from conf import DEBUG_MODE, LOCAL_CHROME_HEADLESS, LOCAL_CHROME_PATH
+from sau_safety import require_external_actions_enabled
 from uploader.base_video import BaseVideoUploader
 from utils.base_social_media import set_init_script
 from utils.login_qrcode import build_login_qrcode_path
@@ -23,11 +29,142 @@ from utils.log import xiaohongshu_logger
 
 XHS_DEFAULT_CREATOR_BASE_URL = "https://creator.xiaohongshu.com"
 XHS_CREATOR_BASE_URL_ENV = "SAU_XHS_CREATOR_BASE_URL"
-XHS_PUBLISH_SUCCESS_URL_PATTERN = "**/publish/success?**"
 XHS_LOGIN_BOX_SELECTOR = "div[class*='login-box']"
 XHS_LOGIN_SWITCH_SELECTOR = "img.css-wemwzq"
 XIAOHONGSHU_PUBLISH_STRATEGY_IMMEDIATE = "immediate"
 XIAOHONGSHU_PUBLISH_STRATEGY_SCHEDULED = "scheduled"
+XHS_MATERIAL_READY_TIMEOUT_SECONDS = 180.0
+XHS_MATERIAL_READY_POLL_SECONDS = 2.0
+XHS_PUBLISH_RESULT_TIMEOUT_SECONDS = 15.0
+XHS_PUBLISH_RESULT_POLL_SECONDS = 0.5
+XHS_FEED_ID_PATTERN = re.compile(r"^[0-9a-fA-F]{24}$")
+
+
+@dataclass(frozen=True, slots=True)
+class XiaohongshuPublishResult:
+    """A verified public Xiaohongshu object, not merely a submitted form."""
+
+    status: str
+    feed_id: str
+    object_ref: str
+    evidence_url: str
+    publish_strategy: str
+
+
+class XiaohongshuPublishUnknownError(RuntimeError):
+    """The one permitted click may have emitted externally; callers must not retry."""
+
+    status = "UNKNOWN"
+    external_action_may_have_occurred = True
+    retry_safe = False
+
+
+def parse_xiaohongshu_public_feed_url(
+    raw_url: str,
+    *,
+    publish_strategy: str = XIAOHONGSHU_PUBLISH_STRATEGY_IMMEDIATE,
+) -> XiaohongshuPublishResult | None:
+    """Parse only canonical public note URLs; never infer an ID from query text."""
+
+    try:
+        parsed = urlsplit(str(raw_url).strip())
+        if (
+            parsed.scheme != "https"
+            or parsed.username is not None
+            or parsed.password is not None
+            or parsed.port is not None
+            or (parsed.hostname or "").rstrip(".").lower() != "www.xiaohongshu.com"
+        ):
+            return None
+    except (TypeError, ValueError):
+        return None
+
+    segments = [unquote(segment) for segment in parsed.path.strip("/").split("/")]
+    if len(segments) == 2 and segments[0] == "explore":
+        feed_id = segments[1]
+        canonical_path = f"/explore/{feed_id.lower()}"
+    elif len(segments) == 3 and segments[:2] == ["discovery", "item"]:
+        feed_id = segments[2]
+        canonical_path = f"/discovery/item/{feed_id.lower()}"
+    else:
+        return None
+
+    if not XHS_FEED_ID_PATTERN.fullmatch(feed_id):
+        return None
+
+    normalized_feed_id = feed_id.lower()
+    return XiaohongshuPublishResult(
+        status="PUBLISHED",
+        feed_id=normalized_feed_id,
+        object_ref=f"xiaohongshu:feed:{normalized_feed_id}",
+        evidence_url=f"https://www.xiaohongshu.com{canonical_path}",
+        publish_strategy=publish_strategy,
+    )
+
+
+async def _bounded_wait(
+    probe,
+    *,
+    timeout_seconds: float,
+    poll_seconds: float,
+    timeout_message: str,
+) -> None:
+    """Poll a readiness predicate a finite number of times."""
+
+    if timeout_seconds < 0 or poll_seconds <= 0:
+        raise ValueError("timeout_seconds must be non-negative and poll_seconds must be positive")
+
+    attempts = max(1, math.ceil(timeout_seconds / poll_seconds) + 1)
+    deadline = time.monotonic() + timeout_seconds
+    last_error: Exception | None = None
+    for attempt in range(attempts):
+        try:
+            if await probe():
+                return
+        except Exception as exc:
+            last_error = exc
+        if attempt + 1 < attempts:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                break
+            await asyncio.sleep(min(poll_seconds, remaining))
+
+    detail = f": {last_error}" if last_error else ""
+    raise TimeoutError(f"{timeout_message}{detail}")
+
+
+async def _wait_for_verified_publish_result(
+    page: Page,
+    *,
+    publish_strategy: str,
+    timeout_seconds: float = XHS_PUBLISH_RESULT_TIMEOUT_SECONDS,
+    poll_seconds: float = XHS_PUBLISH_RESULT_POLL_SECONDS,
+) -> XiaohongshuPublishResult:
+    """Return only when the current page itself is a trusted public note URL."""
+
+    result: XiaohongshuPublishResult | None = None
+
+    async def probe() -> bool:
+        nonlocal result
+        result = parse_xiaohongshu_public_feed_url(
+            page.url,
+            publish_strategy=publish_strategy,
+        )
+        return result is not None
+
+    try:
+        await _bounded_wait(
+            probe,
+            timeout_seconds=timeout_seconds,
+            poll_seconds=poll_seconds,
+            timeout_message="点击发布后未取得受信公开 URL 中的稳定 feed_id",
+        )
+    except TimeoutError as exc:
+        raise XiaohongshuPublishUnknownError(
+            f"UNKNOWN: {exc}；外发可能已经发生，禁止重发"
+        ) from exc
+    assert result is not None
+    return result
 
 
 def _build_xhs_creator_url(path: str) -> str:
@@ -322,6 +459,7 @@ class XiaoHongShuBaseUploader(BaseVideoUploader):
         self.date_format = "%Y年%m月%d日 %H:%M"
         self.local_executable_path = LOCAL_CHROME_PATH
         self.headless = headless
+        self._publish_attempted = False
 
     async def validate_base_args(self):
         if not os.path.exists(self.account_file):
@@ -348,6 +486,45 @@ class XiaoHongShuBaseUploader(BaseVideoUploader):
         time_input = page.locator('.d-datepicker-input-filter input.d-text')
         await time_input.fill(str(publish_date_hour))
         await asyncio.sleep(1)
+
+    async def submit_publish_once(self, page: Page) -> XiaohongshuPublishResult:
+        """Click exactly once and either verify a stable object or report UNKNOWN."""
+
+        require_external_actions_enabled()
+        if self._publish_attempted:
+            raise XiaohongshuPublishUnknownError(
+                "UNKNOWN: 此 uploader 实例已经尝试过发布；禁止重复点击"
+            )
+
+        button_name = (
+            "定时发布"
+            if self.publish_strategy == XIAOHONGSHU_PUBLISH_STRATEGY_SCHEDULED
+            else "发布"
+        )
+        publish_button = page.get_by_role("button", name=button_name, exact=True).first
+        await publish_button.wait_for(state="visible", timeout=15000)
+        if await publish_button.is_disabled():
+            raise RuntimeError(f"小红书{button_name}按钮不可用，未执行外发")
+
+        # A click exception cannot prove that the DOM event did not fire.
+        self._publish_attempted = True
+        try:
+            await publish_button.click(timeout=15000)
+        except Exception as exc:
+            raise XiaohongshuPublishUnknownError(
+                f"UNKNOWN: 小红书{button_name}点击结果不明；外发可能已经发生，禁止重发: {exc}"
+            ) from exc
+
+        if self.publish_strategy == XIAOHONGSHU_PUBLISH_STRATEGY_SCHEDULED:
+            raise XiaohongshuPublishUnknownError(
+                "UNKNOWN: 定时发布请求已单次提交，但上游未返回稳定排程对象 ID；"
+                "不能冒充已发布，禁止重发"
+            )
+
+        return await _wait_for_verified_publish_result(
+            page,
+            publish_strategy=self.publish_strategy,
+        )
 
     async def set_location(self, page: Page, location: str = "青岛市"):
         if not location:
@@ -620,7 +797,7 @@ class XiaoHongShuVideo(XiaoHongShuBaseUploader):
             except Exception:
                 pass
 
-    async def upload_video_content(self, page: Page) -> None:
+    async def upload_video_content(self, page: Page) -> XiaohongshuPublishResult:
         xiaohongshu_logger.info(_msg("🏃", f"小人开始搬运视频: {self.title}.mp4"))
         xiaohongshu_logger.info(_msg("🧭", "小人正在赶往视频发布页"))
         publish_url = _build_xhs_creator_url(
@@ -630,7 +807,7 @@ class XiaoHongShuVideo(XiaoHongShuBaseUploader):
         await page.wait_for_url(publish_url)
         await page.locator("div[class^='upload-content'] input[class='upload-input']").set_input_files(self.file_path)
 
-        while True:
+        async def video_material_ready() -> bool:
             try:
                 upload_input = await page.wait_for_selector('input.upload-input', timeout=3000)
                 preview_new = await upload_input.query_selector(
@@ -651,7 +828,7 @@ class XiaoHongShuVideo(XiaoHongShuBaseUploader):
                     
                     if upload_success:
                         xiaohongshu_logger.success(_msg("🥳", "视频已经传完啦"))
-                        break
+                        return True
                     
                     if self.debug:
                         normalized_text = all_text.strip().replace("\n", " ")
@@ -662,11 +839,18 @@ class XiaoHongShuVideo(XiaoHongShuBaseUploader):
                     title_container = page.locator('input[placeholder*="填写标题"]')
                     if await title_container.count() > 0 and await title_container.is_visible():
                         xiaohongshu_logger.success(_msg("🥳", "虽然没看到预览区，但标题框出来了，小人继续"))
-                        break
+                        return True
                     xiaohongshu_logger.debug(_msg("🧍", "还没拿到预览区域，小人继续等一会"))
             except Exception as e:
                 xiaohongshu_logger.debug(_msg("😵", f"上传状态还没稳定下来，小人继续观察: {e}"))
-            await asyncio.sleep(2)
+            return False
+
+        await _bounded_wait(
+            video_material_ready,
+            timeout_seconds=XHS_MATERIAL_READY_TIMEOUT_SECONDS,
+            poll_seconds=XHS_MATERIAL_READY_POLL_SECONDS,
+            timeout_message="等待小红书视频素材上传完成超时，未点击发布",
+        )
 
         xiaohongshu_logger.info(_msg("✍️", "小人开始填标题、描述和话题"))
         await self.fill_meta(page)
@@ -680,25 +864,14 @@ class XiaoHongShuVideo(XiaoHongShuBaseUploader):
         if self.publish_strategy == XIAOHONGSHU_PUBLISH_STRATEGY_SCHEDULED and self.publish_date != 0:
             await self.set_schedule_time_xiaohongshu(page, self.publish_date)
 
-        while True:
-            try:
-                if self.publish_strategy == XIAOHONGSHU_PUBLISH_STRATEGY_SCHEDULED:
-                    await page.locator('button:has-text("定时发布")').click()
-                else:
-                    await page.locator('button:has-text("发布")').click()
-                await page.wait_for_url(
-                    XHS_PUBLISH_SUCCESS_URL_PATTERN,
-                    timeout=3000
-                )
-                xiaohongshu_logger.success(_msg("🥳", "视频发布成功，小人开心收工"))
-                break
-            except Exception:
-                xiaohongshu_logger.info(_msg("🏃", "小人正在冲刺发布视频"))
-                if self.debug:
-                    await page.screenshot(full_page=True)
-                await asyncio.sleep(0.5)
+        result = await self.submit_publish_once(page)
+        xiaohongshu_logger.success(
+            _msg("🥳", f"视频发布已验证: {result.object_ref}")
+        )
+        return result
 
-    async def upload(self, playwright: Playwright) -> None:
+    async def upload(self, playwright: Playwright) -> XiaohongshuPublishResult:
+        require_external_actions_enabled()
         xiaohongshu_logger.info(_msg("🧍", "小人先检查 cookie、视频文件、封面和发布时间"))
         await self.validate_upload_args()
         xiaohongshu_logger.info(_msg("🥳", "上传前检查通过"))
@@ -711,19 +884,21 @@ class XiaoHongShuVideo(XiaoHongShuBaseUploader):
 
         try:
             page = await context.new_page()
-            await self.upload_video_content(page)
+            result = await self.upload_video_content(page)
             await context.storage_state(path=self.account_file)
             xiaohongshu_logger.success(_msg("🥳", "cookie 更新完毕"))
+            return result
         finally:
             await context.close()
             await browser.close()
 
     async def xiaohongshu_upload_video(self):
+        require_external_actions_enabled()
         async with async_playwright() as playwright:
-            await self.upload(playwright)
+            return await self.upload(playwright)
 
     async def main(self):
-        await self.xiaohongshu_upload_video()
+        return await self.xiaohongshu_upload_video()
 
 
 class XiaoHongShuNote(XiaoHongShuBaseUploader):
@@ -768,7 +943,7 @@ class XiaoHongShuNote(XiaoHongShuBaseUploader):
             normalized_image_paths.append(str(self.validate_image_file(image_path)))
         self.image_paths = normalized_image_paths
 
-    async def upload_note_content(self, page: Page) -> None:
+    async def upload_note_content(self, page: Page) -> XiaohongshuPublishResult:
         xiaohongshu_logger.info(_msg("🏃", f"小人开始搬运图文，共 {len(self.image_paths)} 张图片"))
         xiaohongshu_logger.info(_msg("🧭", "小人正在赶往图文发布页"))
         publish_url = _build_xhs_creator_url(
@@ -785,15 +960,21 @@ class XiaoHongShuNote(XiaoHongShuBaseUploader):
         xiaohongshu_logger.info(_msg("📤", "小人正在上传图片"))
         await upload_input.set_input_files(self.image_paths)
 
-        while True:
-            try:
-                title_container = page.locator('input[placeholder*="填写标题"]').first
-                await title_container.wait_for(state="visible", timeout=3000)
+        title_container = page.locator('input[placeholder*="填写标题"]').first
+
+        async def note_material_ready() -> bool:
+            if await title_container.count() and await title_container.is_visible():
                 xiaohongshu_logger.success(_msg("🥳", "图文素材已经传完，可以开始填写内容了"))
-                break
-            except Exception:
-                xiaohongshu_logger.debug(_msg("🧍", "图文素材还在上传，小人继续等一会"))
-                await asyncio.sleep(1)
+                return True
+            xiaohongshu_logger.debug(_msg("🧍", "图文素材还在上传，小人继续等一会"))
+            return False
+
+        await _bounded_wait(
+            note_material_ready,
+            timeout_seconds=XHS_MATERIAL_READY_TIMEOUT_SECONDS,
+            poll_seconds=XHS_MATERIAL_READY_POLL_SECONDS,
+            timeout_message="等待小红书图文素材上传完成超时，未点击发布",
+        )
 
         xiaohongshu_logger.info(_msg("✍️", "小人开始填标题、描述和话题"))
         await self.fill_meta(page)
@@ -803,25 +984,14 @@ class XiaoHongShuNote(XiaoHongShuBaseUploader):
         if self.publish_strategy == XIAOHONGSHU_PUBLISH_STRATEGY_SCHEDULED and self.publish_date != 0:
             await self.set_schedule_time_xiaohongshu(page, self.publish_date)
 
-        while True:
-            try:
-                if self.publish_strategy == XIAOHONGSHU_PUBLISH_STRATEGY_SCHEDULED:
-                    await page.locator('button:has-text("定时发布")').click()
-                else:
-                    await page.locator('button:has-text("发布")').click()
-                await page.wait_for_url(
-                    XHS_PUBLISH_SUCCESS_URL_PATTERN,
-                    timeout=3000
-                )
-                xiaohongshu_logger.success(_msg("🥳", "图文发布成功，小人开心收工"))
-                break
-            except Exception:
-                xiaohongshu_logger.info(_msg("🏃", "小人正在冲刺发布图文"))
-                if self.debug:
-                    await page.screenshot(full_page=True)
-                await asyncio.sleep(0.5)
+        result = await self.submit_publish_once(page)
+        xiaohongshu_logger.success(
+            _msg("🥳", f"图文发布已验证: {result.object_ref}")
+        )
+        return result
 
-    async def upload(self, playwright: Playwright) -> None:
+    async def upload(self, playwright: Playwright) -> XiaohongshuPublishResult:
+        require_external_actions_enabled()
         xiaohongshu_logger.info(_msg("🧍", "小人先检查 cookie、图片和发布时间"))
         await self.validate_upload_args()
         xiaohongshu_logger.info(_msg("🥳", "图文上传前检查通过"))
@@ -834,16 +1004,18 @@ class XiaoHongShuNote(XiaoHongShuBaseUploader):
 
         try:
             page = await context.new_page()
-            await self.upload_note_content(page)
+            result = await self.upload_note_content(page)
             await context.storage_state(path=self.account_file)
             xiaohongshu_logger.success(_msg("🥳", "cookie 更新完毕"))
+            return result
         finally:
             await context.close()
             await browser.close()
 
     async def xiaohongshu_upload_note(self):
+        require_external_actions_enabled()
         async with async_playwright() as playwright:
-            await self.upload(playwright)
+            return await self.upload(playwright)
 
     async def main(self):
-        await self.xiaohongshu_upload_note()
+        return await self.xiaohongshu_upload_note()

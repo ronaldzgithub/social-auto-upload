@@ -35,6 +35,10 @@ Foundry 拥有内容计划、销售目标、客户/商机语义、预算、外�
 
 安全 adapter 不提供发布能力，也不从请求接收 Cookie、Token、密码或会话材料。旧 `sau` 的十三个上传 wrapper 新增 `SAU_ENABLE_EXTERNAL_ACTIONS` fail-closed 门禁：默认、空值和未知值在账号/浏览器操作前拒绝；仅 `1`、`true`、`yes`、`on` 显式开启。该兼容开关不构成 Foundry 批准，也不能绕过 Huaxiaobao 的能力审核和执行门。
 
+小红书 fallback uploader 的素材等待已有明确上限，每个 uploader 实例最多调用一次发布按钮。单次点击后，仅当浏览器当前地址成为 `https://www.xiaohongshu.com/explore/<24-hex-feed-id>` 或旧版 `.../discovery/item/<24-hex-feed-id>` 时才返回 `PUBLISHED`；后台成功页、标题搜索、错误域名和 query 中的 ID 都不能作为成功证据。未取得稳定 ID（包括定时发布）返回 `UNKNOWN`，含义是可能已经外发且禁止重发。
+
+该上游仍不具备跨进程、跨重启的 durable idempotency store，也没有可查询的稳定发布 operation ID。因此 Huaxiaobao 的小红书 `content.publish` 必须继续保持 blocked；不能因为这里消除了进程内重复点击就将 fallback 晋升为 runnable。未来只有在 Huaxiaobao 以同一账号/对象锁和持久请求身份包住一次提交，并能用平台对象 ID readback 后，才可以审核激活。
+
 ## 账号与人工入口
 
 账号状态文件位于运行目录的 `cookies/`，只能存放在 Huaxiaobao 管理的执行边界。Foundry 任务只保存账号不透明引用。

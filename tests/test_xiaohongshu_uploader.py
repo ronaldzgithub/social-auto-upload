@@ -89,7 +89,249 @@ class RecordingPage:
         return self.locators[selector]
 
 
+class PublishButton:
+    def __init__(self, page, *, target_url=None, click_error=None, disabled=False):
+        self.page = page
+        self.target_url = target_url
+        self.click_error = click_error
+        self.disabled = disabled
+        self.click_count = 0
+
+    @property
+    def first(self):
+        return self
+
+    async def wait_for(self, **kwargs):
+        return None
+
+    async def is_disabled(self):
+        return self.disabled
+
+    async def click(self, **kwargs):
+        self.click_count += 1
+        if self.target_url:
+            self.page.url = self.target_url
+        if self.click_error:
+            raise self.click_error
+
+
+class PublishPage:
+    def __init__(self, url, *, target_url=None, click_error=None, disabled=False):
+        self.url = url
+        self.button = PublishButton(
+            self,
+            target_url=target_url,
+            click_error=click_error,
+            disabled=disabled,
+        )
+        self.requested_button = None
+
+    def get_by_role(self, role, *, name, exact):
+        self.requested_button = (role, name, exact)
+        return self.button
+
+
 class XiaohongshuUploaderTests(unittest.TestCase):
+    def setUp(self):
+        self.external_action_gate = patch.dict(
+            os.environ,
+            {"SAU_ENABLE_EXTERNAL_ACTIONS": "true"},
+        )
+        self.external_action_gate.start()
+        self.addCleanup(self.external_action_gate.stop)
+
+    def test_public_feed_url_parser_returns_stable_object(self):
+        result = xhs_main.parse_xiaohongshu_public_feed_url(
+            "https://www.xiaohongshu.com/explore/64F1A2B3C4D5E6F7A8B9C0D1"
+            "?xsec_token=secret-not-copied"
+        )
+
+        self.assertIsNotNone(result)
+        self.assertEqual(result.status, "PUBLISHED")
+        self.assertEqual(result.feed_id, "64f1a2b3c4d5e6f7a8b9c0d1")
+        self.assertEqual(
+            result.object_ref,
+            "xiaohongshu:feed:64f1a2b3c4d5e6f7a8b9c0d1",
+        )
+        self.assertEqual(
+            result.evidence_url,
+            "https://www.xiaohongshu.com/explore/64f1a2b3c4d5e6f7a8b9c0d1",
+        )
+        self.assertNotIn("xsec_token", result.evidence_url)
+
+    def test_public_feed_url_parser_rejects_wrong_domain_query_guess_and_missing_id(self):
+        invalid_urls = (
+            "https://www.xiaohongshu.com.example/explore/64f1a2b3c4d5e6f7a8b9c0d1",
+            "http://www.xiaohongshu.com/explore/64f1a2b3c4d5e6f7a8b9c0d1",
+            "https://creator.xiaohongshu.com/publish/success?noteId=64f1a2b3c4d5e6f7a8b9c0d1",
+            "https://www.xiaohongshu.com/search_result?keyword=64f1a2b3c4d5e6f7a8b9c0d1",
+            "https://www.xiaohongshu.com/explore/",
+            "https://www.xiaohongshu.com/explore/not-a-feed-id",
+            "https://www.xiaohongshu.com/explore/64f1a2b3c4d5e6f7a8b9c0d1/edit",
+        )
+
+        for raw_url in invalid_urls:
+            with self.subTest(raw_url=raw_url):
+                self.assertIsNone(
+                    xhs_main.parse_xiaohongshu_public_feed_url(raw_url)
+                )
+
+    def test_immediate_publish_clicks_once_and_returns_verified_feed(self):
+        app = xhs_main.XiaoHongShuVideo(
+            title="demo",
+            file_path="demo.mp4",
+            tags=[],
+            publish_date=0,
+            account_file="account.json",
+        )
+        page = PublishPage(
+            "https://creator.xiaohongshu.com/publish/publish",
+            target_url="https://www.xiaohongshu.com/discovery/item/64f1a2b3c4d5e6f7a8b9c0d1",
+        )
+
+        result = asyncio.run(app.submit_publish_once(page))
+
+        self.assertEqual(result.status, "PUBLISHED")
+        self.assertEqual(page.button.click_count, 1)
+        self.assertEqual(page.requested_button, ("button", "发布", True))
+        with self.assertRaises(xhs_main.XiaohongshuPublishUnknownError):
+            asyncio.run(app.submit_publish_once(page))
+        self.assertEqual(page.button.click_count, 1)
+
+    def test_publish_without_stable_id_is_unknown_and_never_reclicks(self):
+        app = xhs_main.XiaoHongShuNote(
+            image_paths=["image.png"],
+            note="demo",
+            tags=[],
+            publish_date=0,
+            account_file="account.json",
+            title="demo",
+        )
+        page = PublishPage("https://creator.xiaohongshu.com/publish/success?ok=1")
+        unknown = xhs_main.XiaohongshuPublishUnknownError(
+            "UNKNOWN: no stable feed id; do not retry"
+        )
+
+        with patch(
+            "uploader.xiaohongshu_uploader.main._wait_for_verified_publish_result",
+            new=AsyncMock(side_effect=unknown),
+        ):
+            with self.assertRaises(xhs_main.XiaohongshuPublishUnknownError) as caught:
+                asyncio.run(app.submit_publish_once(page))
+
+        self.assertEqual(caught.exception.status, "UNKNOWN")
+        self.assertFalse(caught.exception.retry_safe)
+        self.assertEqual(page.button.click_count, 1)
+        with self.assertRaises(xhs_main.XiaohongshuPublishUnknownError):
+            asyncio.run(app.submit_publish_once(page))
+        self.assertEqual(page.button.click_count, 1)
+
+    def test_untrusted_result_url_times_out_as_unknown_without_guessing_query_id(self):
+        page = PublishPage(
+            "https://creator.xiaohongshu.com/publish/success"
+            "?noteId=64f1a2b3c4d5e6f7a8b9c0d1"
+        )
+
+        with self.assertRaises(xhs_main.XiaohongshuPublishUnknownError) as caught:
+            asyncio.run(
+                xhs_main._wait_for_verified_publish_result(
+                    page,
+                    publish_strategy=xhs_main.XIAOHONGSHU_PUBLISH_STRATEGY_IMMEDIATE,
+                    timeout_seconds=0,
+                    poll_seconds=0.01,
+                )
+            )
+
+        self.assertIn("禁止重发", str(caught.exception))
+
+    def test_click_exception_is_unknown_because_external_action_may_have_happened(self):
+        app = xhs_main.XiaoHongShuVideo(
+            title="demo",
+            file_path="demo.mp4",
+            tags=[],
+            publish_date=0,
+            account_file="account.json",
+        )
+        page = PublishPage(
+            "https://creator.xiaohongshu.com/publish/publish",
+            click_error=TimeoutError("navigation raced click"),
+        )
+
+        with self.assertRaises(xhs_main.XiaohongshuPublishUnknownError):
+            asyncio.run(app.submit_publish_once(page))
+
+        self.assertTrue(app._publish_attempted)
+        self.assertEqual(page.button.click_count, 1)
+
+    def test_scheduled_submission_is_unknown_not_published(self):
+        app = xhs_main.XiaoHongShuNote(
+            image_paths=["image.png"],
+            note="demo",
+            tags=[],
+            publish_date=0,
+            account_file="account.json",
+            title="demo",
+            publish_strategy=xhs_main.XIAOHONGSHU_PUBLISH_STRATEGY_SCHEDULED,
+        )
+        page = PublishPage("https://creator.xiaohongshu.com/publish/success?scheduled=true")
+
+        with self.assertRaises(xhs_main.XiaohongshuPublishUnknownError) as caught:
+            asyncio.run(app.submit_publish_once(page))
+
+        self.assertIn("不能冒充已发布", str(caught.exception))
+        self.assertEqual(page.requested_button, ("button", "定时发布", True))
+        self.assertEqual(page.button.click_count, 1)
+
+    def test_material_wait_is_bounded_and_does_not_click(self):
+        calls = 0
+
+        async def never_ready():
+            nonlocal calls
+            calls += 1
+            return False
+
+        with self.assertRaises(TimeoutError) as caught:
+            asyncio.run(
+                xhs_main._bounded_wait(
+                    never_ready,
+                    timeout_seconds=0,
+                    poll_seconds=0.01,
+                    timeout_message="等待素材超时，未点击发布",
+                )
+            )
+
+        self.assertEqual(calls, 1)
+        self.assertIn("未点击发布", str(caught.exception))
+
+    def test_direct_uploader_keeps_external_action_gate(self):
+        app = xhs_main.XiaoHongShuVideo(
+            title="demo",
+            file_path="demo.mp4",
+            tags=[],
+            publish_date=0,
+            account_file="account.json",
+        )
+        with patch.dict(os.environ, {}, clear=True):
+            with self.assertRaisesRegex(RuntimeError, "External publishing is disabled"):
+                asyncio.run(app.upload(None))
+
+    def test_submit_boundary_gate_blocks_before_click(self):
+        app = xhs_main.XiaoHongShuVideo(
+            title="demo",
+            file_path="demo.mp4",
+            tags=[],
+            publish_date=0,
+            account_file="account.json",
+        )
+        page = PublishPage("https://creator.xiaohongshu.com/publish/publish")
+
+        with patch.dict(os.environ, {}, clear=True):
+            with self.assertRaisesRegex(RuntimeError, "External publishing is disabled"):
+                asyncio.run(app.submit_publish_once(page))
+
+        self.assertFalse(app._publish_attempted)
+        self.assertEqual(page.button.click_count, 0)
+
     def test_creator_urls_keep_xiaohongshu_domain_by_default(self):
         with patch.dict(os.environ, {"SAU_XHS_CREATOR_BASE_URL": ""}):
             self.assertEqual(

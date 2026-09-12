@@ -58,6 +58,7 @@ from uploader.xiaohongshu_uploader.main import (
     XIAOHONGSHU_PUBLISH_STRATEGY_SCHEDULED,
     XiaoHongShuNote,
     XiaoHongShuVideo,
+    XiaohongshuPublishResult,
     cookie_auth as xiaohongshu_cookie_auth,
     xiaohongshu_setup,
 )
@@ -518,7 +519,9 @@ async def upload_kuaishou_note(request: KuaishouNoteUploadRequest) -> Path:
 
 
 @external_action_guard
-async def upload_xiaohongshu_video(request: XiaohongshuVideoUploadRequest) -> Path:
+async def upload_xiaohongshu_video(
+    request: XiaohongshuVideoUploadRequest,
+) -> XiaohongshuPublishResult:
     account_file = resolve_account_file("xiaohongshu", request.account_name)
     is_ready = await xiaohongshu_setup(str(account_file), handle=False)
     if not is_ready:
@@ -538,12 +541,13 @@ async def upload_xiaohongshu_video(request: XiaohongshuVideoUploadRequest) -> Pa
         debug=request.debug,
         headless=request.headless,
     )
-    await app.main()
-    return account_file
+    return await app.main()
 
 
 @external_action_guard
-async def upload_xiaohongshu_note(request: XiaohongshuNoteUploadRequest) -> Path:
+async def upload_xiaohongshu_note(
+    request: XiaohongshuNoteUploadRequest,
+) -> XiaohongshuPublishResult:
     account_file = resolve_account_file("xiaohongshu", request.account_name)
     is_ready = await xiaohongshu_setup(str(account_file), handle=False)
     if not is_ready:
@@ -563,8 +567,7 @@ async def upload_xiaohongshu_note(request: XiaohongshuNoteUploadRequest) -> Path
         debug=request.debug,
         headless=request.headless,
     )
-    await app.main()
-    return account_file
+    return await app.main()
 
 
 @external_action_guard
@@ -1202,8 +1205,11 @@ async def dispatch(args: argparse.Namespace) -> int:
                 debug=args.debug,
                 headless=args.headless,
             )
-            await upload_xiaohongshu_video(request)
-            print(f"Xiaohongshu video upload submitted: {request.video_file}")
+            result = await upload_xiaohongshu_video(request)
+            print(
+                f"Xiaohongshu video published and verified: "
+                f"{result.object_ref} ({result.evidence_url})"
+            )
             return 0
 
         if args.action == "upload-note":
@@ -1222,8 +1228,11 @@ async def dispatch(args: argparse.Namespace) -> int:
                 debug=args.debug,
                 headless=args.headless,
             )
-            await upload_xiaohongshu_note(request)
-            print(f"Xiaohongshu note upload submitted: {len(request.image_files)} images")
+            result = await upload_xiaohongshu_note(request)
+            print(
+                f"Xiaohongshu note published and verified: "
+                f"{result.object_ref} ({result.evidence_url})"
+            )
             return 0
 
         raise RuntimeError(f"Unsupported Xiaohongshu action: {args.action}")

@@ -313,7 +313,17 @@ class BrowserCliDispatchTests(unittest.TestCase):
             debug=False,
             headless=False,
         )
-        with patch("sau_cli.upload_xiaohongshu_video", new=AsyncMock()) as mock_upload:
+        verified_result = sau_cli.XiaohongshuPublishResult(
+            status="PUBLISHED",
+            feed_id="64f1a2b3c4d5e6f7a8b9c0d1",
+            object_ref="xiaohongshu:feed:64f1a2b3c4d5e6f7a8b9c0d1",
+            evidence_url="https://www.xiaohongshu.com/explore/64f1a2b3c4d5e6f7a8b9c0d1",
+            publish_strategy="immediate",
+        )
+        with patch(
+            "sau_cli.upload_xiaohongshu_video",
+            new=AsyncMock(return_value=verified_result),
+        ) as mock_upload:
             asyncio.run(sau_cli.dispatch(args))
 
         request = mock_upload.await_args.args[0]
@@ -334,7 +344,17 @@ class BrowserCliDispatchTests(unittest.TestCase):
             debug=False,
             headless=True,
         )
-        with patch("sau_cli.upload_xiaohongshu_note", new=AsyncMock()) as mock_upload:
+        verified_result = sau_cli.XiaohongshuPublishResult(
+            status="PUBLISHED",
+            feed_id="64f1a2b3c4d5e6f7a8b9c0d1",
+            object_ref="xiaohongshu:feed:64f1a2b3c4d5e6f7a8b9c0d1",
+            evidence_url="https://www.xiaohongshu.com/explore/64f1a2b3c4d5e6f7a8b9c0d1",
+            publish_strategy="immediate",
+        )
+        with patch(
+            "sau_cli.upload_xiaohongshu_note",
+            new=AsyncMock(return_value=verified_result),
+        ) as mock_upload:
             asyncio.run(sau_cli.dispatch(args))
 
         request = mock_upload.await_args.args[0]
