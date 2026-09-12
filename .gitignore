@@ -189,3 +189,7 @@ uploadFile
 videoFile
 
 /uploader/bilibili_uploader/qrcode.png
+
+# 临时登录/二次验证材料（可能包含一次性凭据或可扫码登录内容）
+/verify_code.txt
+/qrcode.png
