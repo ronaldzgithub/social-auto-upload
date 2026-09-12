@@ -66,6 +66,7 @@ from uploader.youtube_uploader.main import (
     cookie_auth as youtube_cookie_auth,
     youtube_setup,
 )
+from sau_safety import external_action_guard
 
 SCHEDULE_FORMAT = "%Y-%m-%d %H:%M"
 
@@ -382,6 +383,7 @@ async def check_youtube_account(account_name: str) -> bool:
     return await youtube_cookie_auth(str(account_file))
 
 
+@external_action_guard
 async def upload_youtube_video(request: YouTubeVideoUploadRequest) -> Path:
     account_file = resolve_account_file("youtube", request.account_name)
     is_ready = await youtube_setup(str(account_file), handle=False)
@@ -406,6 +408,7 @@ async def upload_youtube_video(request: YouTubeVideoUploadRequest) -> Path:
     return account_file
 
 
+@external_action_guard
 async def upload_video(request: DouyinVideoUploadRequest) -> Path:
     account_file = resolve_account_file("douyin", request.account_name)
     is_ready = await douyin_setup(str(account_file), handle=False)
@@ -439,6 +442,7 @@ async def upload_video(request: DouyinVideoUploadRequest) -> Path:
     return account_file
 
 
+@external_action_guard
 async def upload_note(request: DouyinNoteUploadRequest) -> Path:
     account_file = resolve_account_file("douyin", request.account_name)
     is_ready = await douyin_setup(str(account_file), handle=False)
@@ -463,6 +467,7 @@ async def upload_note(request: DouyinNoteUploadRequest) -> Path:
     return account_file
 
 
+@external_action_guard
 async def upload_kuaishou_video(request: KuaishouVideoUploadRequest) -> Path:
     account_file = resolve_account_file("kuaishou", request.account_name)
     is_ready = await ks_setup(str(account_file), handle=False)
@@ -488,6 +493,7 @@ async def upload_kuaishou_video(request: KuaishouVideoUploadRequest) -> Path:
     return account_file
 
 
+@external_action_guard
 async def upload_kuaishou_note(request: KuaishouNoteUploadRequest) -> Path:
     account_file = resolve_account_file("kuaishou", request.account_name)
     is_ready = await ks_setup(str(account_file), handle=False)
@@ -511,6 +517,7 @@ async def upload_kuaishou_note(request: KuaishouNoteUploadRequest) -> Path:
     return account_file
 
 
+@external_action_guard
 async def upload_xiaohongshu_video(request: XiaohongshuVideoUploadRequest) -> Path:
     account_file = resolve_account_file("xiaohongshu", request.account_name)
     is_ready = await xiaohongshu_setup(str(account_file), handle=False)
@@ -535,6 +542,7 @@ async def upload_xiaohongshu_video(request: XiaohongshuVideoUploadRequest) -> Pa
     return account_file
 
 
+@external_action_guard
 async def upload_xiaohongshu_note(request: XiaohongshuNoteUploadRequest) -> Path:
     account_file = resolve_account_file("xiaohongshu", request.account_name)
     is_ready = await xiaohongshu_setup(str(account_file), handle=False)
@@ -559,6 +567,7 @@ async def upload_xiaohongshu_note(request: XiaohongshuNoteUploadRequest) -> Path
     return account_file
 
 
+@external_action_guard
 async def upload_bilibili_video(request: BilibiliVideoUploadRequest) -> Path:
     account_file = resolve_account_file("bilibili", request.account_name)
     if not account_file.exists():
@@ -591,6 +600,7 @@ async def upload_bilibili_video(request: BilibiliVideoUploadRequest) -> Path:
     return account_file
 
 
+@external_action_guard
 async def upload_tencent_video(request: TencentVideoUploadRequest) -> Path:
     account_file = resolve_account_file("tencent", request.account_name)
     is_ready = await tencent_setup(str(account_file), handle=False)
@@ -638,6 +648,7 @@ async def check_baijiahao_account(account_name: str) -> bool:
     return await baijiahao_cookie_auth(str(account_file))
 
 
+@external_action_guard
 async def upload_baijiahao_video(request: BaijiahaoVideoUploadRequest) -> Path:
     account_file = resolve_account_file("baijiahao", request.account_name)
     is_ready = await baijiahao_setup(str(account_file), handle=False)
@@ -673,6 +684,7 @@ async def check_alipay_account(account_name: str) -> bool:
     return await alipay_cookie_auth(str(account_file))
 
 
+@external_action_guard
 async def upload_alipay_video(request: AlipayVideoUploadRequest) -> Path:
     account_file = resolve_account_file("alipay", request.account_name)
     is_ready = await alipay_setup(str(account_file), handle=False)
@@ -708,6 +720,7 @@ async def check_weibo_account(account_name: str) -> bool:
     return await weibo_cookie_auth(str(account_file))
 
 
+@external_action_guard
 async def upload_weibo_video(request: WeiboVideoUploadRequest) -> Path:
     account_file = resolve_account_file("weibo", request.account_name)
     is_ready = await weibo_setup(str(account_file), handle=False)
@@ -743,6 +756,7 @@ async def check_hupu_account(account_name: str) -> bool:
     return await hupu_cookie_auth(str(account_file))
 
 
+@external_action_guard
 async def upload_hupu_video(request: HupuVideoUploadRequest) -> Path:
     account_file = resolve_account_file("hupu", request.account_name)
     is_ready = await hupu_setup(str(account_file), handle=False)

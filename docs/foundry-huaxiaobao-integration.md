@@ -29,6 +29,12 @@ Foundry 拥有内容计划、销售目标、客户/商机语义、预算、外�
 
 上述能力必须按平台、账号和动作分别注册。小红书默认由 `xiaohongshu-mcp` 执行；本仓库的小红书上传只有在主执行器不可用且显式选择 fallback 时才运行，禁止双执行。
 
+## 安全 adapter surface 与外发门禁
+
+安装后可运行 `sau-huaxiaobao describe`；`sau-huaxiaobao execute` 从标准输入读取 `foundry.huaxiaobao.tool-request.v1` JSON。当前按十个平台分别开放 `account.status`，复用对应原生 `check_*_account`，返回请求哈希、平台级稳定账号对象引用和 `READY`/`BLOCKED`/`UNKNOWN` typed result。账号对象引用故意不含 executor 名，以便小红书主执行器和 fallback 锁定同一对象。小红书描述固定标为 fallback，并指向主执行器 `xiaohongshu-mcp`；调用方必须以同一稳定 operation/账号引用落实互斥选择。
+
+安全 adapter 不提供发布能力，也不从请求接收 Cookie、Token、密码或会话材料。旧 `sau` 的十三个上传 wrapper 新增 `SAU_ENABLE_EXTERNAL_ACTIONS` fail-closed 门禁：默认、空值和未知值在账号/浏览器操作前拒绝；仅 `1`、`true`、`yes`、`on` 显式开启。该兼容开关不构成 Foundry 批准，也不能绕过 Huaxiaobao 的能力审核和执行门。
+
 ## 账号与人工入口
 
 账号状态文件位于运行目录的 `cookies/`，只能存放在 Huaxiaobao 管理的执行边界。Foundry 任务只保存账号不透明引用。
@@ -65,8 +71,8 @@ Foundry 拥有内容计划、销售目标、客户/商机语义、预算、外�
 
 - 源码基线：已记录。
 - 本地运行：未就绪；当前缺少 `conf.py`、虚拟环境和账号状态。
-- 测试：当前 `pytest` 在收集阶段因缺少 `conf.py` 失败，尚无完整通过证据。
-- Foundry—Huaxiaobao 合同：待外层 adapter 实现。
+- 测试：安全 adapter/门禁针对性测试已离线通过；完整 `pytest` 仍在收集阶段因缺少 `conf.py` 失败，尚无全量通过证据。
+- Foundry—Huaxiaobao 合同：已增加按平台隔离的 `account.status` 最小 adapter；发布/排程执行与持久恢复合同仍未开放。
 - 真实账号及获批外部动作：均未验证。
 - 人工 ACK、重启恢复、重复结果、权限撤销与下游自动恢复：无真实证据。
 

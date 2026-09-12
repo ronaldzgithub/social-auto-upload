@@ -19,6 +19,7 @@ dependencies = [
 
 [project.scripts]
 sau = "sau_cli:main"
+sau-huaxiaobao = "sau_adapter:main"
 
 [project.optional-dependencies]
 web = [
@@ -30,7 +31,7 @@ web = [
 package = true
 
 [tool.setuptools]
-py-modules = ["cli_main", "conf", "sau_cli"]
+py-modules = ["cli_main", "conf", "sau_adapter", "sau_cli", "sau_safety"]
 include-package-data = true
 
 [tool.setuptools.packages.find]
