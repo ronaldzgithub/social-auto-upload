@@ -39,3 +39,4 @@ include = ["uploader*", "utils*", "myUtils*"]
 
 [tool.setuptools.package-data]
 utils = ["stealth.min.js"]
+"uploader.bilibili_uploader" = ["biliup-lock.json"]

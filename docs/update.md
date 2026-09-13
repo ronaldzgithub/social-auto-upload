@@ -121,5 +121,15 @@ sau bilibili check --account test
 - 当前 README 只做总览，安装和更新以 `docs/install.md`、`docs/update.md` 为准
 - Web 相关内容属于历史路径，见 `docs/legacy-web.md`
 - 如果更新后的登录流程输出了本地二维码图片，agent 应直接把图片展示/发送给用户扫码，不要只回传图片路径
-- Bilibili 命令运行时会自动检查并更新 `biliup`
+- Bilibili 运行时不再查询 latest；它只安装并校验 `uploader/bilibili_uploader/biliup-lock.json` 中固定的版本
 - Bilibili 登录当前仍建议让用户自己在本地真实终端里执行；如果二维码显示不完整，可让用户直接打开 `qrcode.png` 扫码
+
+### Bilibili `biliup` 固定版本升级
+
+当前 lock 固定 `v1.2.4`。升级时必须：
+
+1. 审查目标 release、变更说明、许可证和每个平台所需资产；不得使用 `latest` URL。
+2. 一次性更新 `biliup-lock.json` 的 `version`、`source_release`，以及 Windows/Linux/macOS 对应资产的官方 HTTPS URL、精确字节数和 SHA-256。
+3. SHA-256 应来自 GitHub release asset 的 digest，并独立下载复核；同一版本出现不同哈希时停止升级，不覆盖现有安装。
+4. 运行 `python -m unittest tests.test_bilibili_runtime -v`，并在隔离 Windows/Linux 环境执行只到二进制准备和 `--help` 的验证；不得借升级测试触发登录或上传。
+5. 提交 lock、测试结果和 rollback 版本。回滚通过恢复上一份已审查 lock 后重新安装完成，不手工修改 install record。

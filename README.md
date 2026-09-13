@@ -232,8 +232,9 @@ sau youtube upload-video --account <account_name> --file videos/demo.mp4 --title
 - 视频使用 `title + desc + tags`
 - 图文使用 `title + note + tags`
 - Bilibili CLI 不要求用户手动安装 `biliup`
-- 首次运行相关命令时，程序会自动下载 `biliup`
-- 后续运行会自动检查上游 release 并更新
+- 首次运行相关命令时，程序只会下载 `uploader/bilibili_uploader/biliup-lock.json` 固定的 `biliup` 版本和当前平台资产
+- 后续运行会校验安装记录和二进制哈希后复用，不查询 GitHub latest，也不会自动漂移版本
+- 升级必须审查并更新 lock 中的版本、官方 HTTPS release URL、字节数和 SHA-256，再运行 Bilibili runtime 测试
 - Bilibili 登录建议由用户自己在本地真实终端里执行；如果终端二维码显示不完整，可以直接打开当前目录下的 `qrcode.png` 扫码
 
 ### 方式 2：使用 examples

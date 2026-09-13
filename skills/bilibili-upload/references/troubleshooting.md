@@ -13,9 +13,8 @@
 - 当前网络是否能访问 GitHub
 - GitHub Release 是否可访问
 - 本地目录是否有写权限
-- 国内网络较慢时，可先用 `https://gh-proxy.com/` 或 `https://gh-proxy.org/` 辅助访问对应 release 地址排障
-- 示例：
-  - `https://gh-proxy.org/https://github.com/biliup/biliup/releases/download/v1.1.29/biliupR-v1.1.29-aarch64-linux.tar.xz`
+- `biliup-lock.json` 中当前平台的 URL、size 和 SHA-256 是否来自同一已审查 release
+- 不要用代理域名改写下载 URL；下载器会拒绝越出获准 GitHub release 资产域
 
 ## 3. `check` 返回 `invalid`
 
@@ -59,11 +58,9 @@ sau bilibili login --account <account>
 
 ## 6. 上游更新后行为变化
 
-当前 Bilibili 集成会自动跟随上游 `biliup` 最新 release。
-
-如果上游命令行为变化，可能会影响本项目的 Bilibili CLI。
+当前 Bilibili 集成不会自动跟随上游 latest。升级由仓库 lock 明确控制。
 
 排障时请同时确认：
 
-- 当前下载到的 `biliup` 版本
-- 上游 release 是否有最近变更
+- install record 中的版本、平台、资产和二进制 SHA-256
+- `biliup-lock.json` 是否经过完整升级流程，而不是只替换其中一个 URL 或哈希

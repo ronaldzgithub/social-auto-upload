@@ -113,8 +113,9 @@ sau bilibili upload-video --account <account_name> --file videos/demo.mp4 --titl
 - 视频使用 `title + desc + tags`
 - 图文使用 `title + note + tags`
 - `sau bilibili ...` 会自动准备 `biliup`
-- 如果本地没有 `biliup`，第一次运行会自动下载
-- 如果上游 GitHub Release 有更新，运行时会先自动更新
+- 如果本地没有 `biliup`，第一次运行只下载仓库 lock 固定的版本和平台资产
+- 已安装二进制必须与 install record 的 SHA-256 一致；同版本资产哈希变化会直接拒绝
+- 运行时不访问 GitHub latest，版本升级通过审查 `uploader/bilibili_uploader/biliup-lock.json` 完成
 - `sau bilibili login --account <name>` 建议由用户自己在本地真实终端里执行；如果终端里的二维码显示不完整，可直接打开当前目录下的 `qrcode.png` 扫码
 
 ## 视频号 CLI 子命令

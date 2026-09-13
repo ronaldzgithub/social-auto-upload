@@ -8,7 +8,7 @@ description: 当 agent 需要通过已安装的 `sau` CLI 完成 Bilibili 登录
 优先把 `sau` 作为主接口。
 
 不要一开始就让用户自己找 `biliup` 或手动下载 release。
-程序会在运行时自动检查、自动下载、自动更新 `biliup`。
+程序会按仓库内审查过的 lock 自动下载并校验 `biliup`，不会查询 latest 或自行更新版本。
 
 ## 功能概览
 

@@ -63,4 +63,4 @@ sau bilibili upload-video \
 - `--tid` 第一版必须传
 - `--tags` 使用逗号分隔
 - `--schedule` 走 `sau` 统一时间格式
-- 程序会自动准备和更新 `biliup`
+- 程序只会准备并校验仓库 lock 固定的 `biliup`；版本变化必须先更新并审查 lock

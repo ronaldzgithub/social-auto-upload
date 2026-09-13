@@ -21,7 +21,7 @@ Foundry 拥有内容计划、销售目标、客户/商机语义、预算、外�
 | 抖音 | 登录、检查、视频、图文、定时 | 扫码、短信/安全验证 | 发布、定时发布、获取验证码 |
 | 快手 | 登录、检查、视频、图文、定时 | 扫码及页面验证 | 发布、定时发布 |
 | 小红书 | 登录、检查、视频、图文、定时 | 扫码 | 发布、定时发布 |
-| Bilibili | 登录、检查、视频、定时 | 交互终端扫码 | 发布、定时发布；运行时下载 `biliup` |
+| Bilibili | 登录、检查、视频、定时 | 交互终端扫码 | 发布、定时发布；只安装 lock 固定且经 size/SHA-256 校验的 `biliup` |
 | 视频号 | 登录、检查、视频、定时、草稿 | 微信扫码、管理员实名验证 | 发表、定时发表或保存草稿 |
 | 百家号、支付宝生活号、微博、虎扑 | 登录、检查、视频 | 对应平台登录/验证 | 发布 |
 | YouTube | 交互登录、检查、视频 | Google 浏览器登录 | 发布并设置可见性/播放列表 |
@@ -69,7 +69,7 @@ Foundry 拥有内容计划、销售目标、客户/商机语义、预算、外�
 
 部署由 VolvenceDeploy 按平台隔离运行，持久化账号状态和临时验证材料，限制文件权限与网络边界。不得自动重启、迁移或替换正在运行的 Foundry、Huaxiaobao 或其他生产实例。
 
-升级时记录 upstream commit、Fork commit、Python/Patchright/浏览器版本；Bilibili 的 `biliup` 还需记录 release 版本、资产哈希和许可证。先在隔离环境执行 CLI、单元测试、浏览器 fixture 和无外发验证，再通过独立发布门。
+升级时记录 upstream commit、Fork commit、Python/Patchright/浏览器版本；Bilibili 的 `biliup` 版本、逐平台官方资产 URL、size 和 SHA-256 固定在 `uploader/bilibili_uploader/biliup-lock.json`，同版本不同哈希 fail closed。先在隔离环境执行 runtime/CLI 单元测试、浏览器 fixture 和无外发验证，再通过独立发布门。
 
 ## 当前验收状态
 

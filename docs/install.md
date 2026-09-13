@@ -160,12 +160,10 @@ sau bilibili upload-video --account <account_name> --file videos/demo.mp4 --titl
 - 视频使用 `title + desc + tags`
 - 图文使用 `title + note + tags`
 - 用户不需要手动安装 `biliup`
-- 首次运行 Bilibili 相关命令时，程序会自动下载 `biliup`
-- 后续运行会自动检查上游 release 并自动更新
+- 首次运行 Bilibili 相关命令时，程序只下载仓库 lock 固定的 `biliup` 版本和当前平台资产
+- 后续运行校验 install record 与本地二进制哈希后复用，不查询或自动跟随 latest release
 - Bilibili 登录建议由用户自己在本地真实终端里执行；如果终端里的二维码显示不完整，可直接打开当前目录下的 `qrcode.png` 扫码
-- 如果国内网络访问 GitHub Release 较慢，可先用 `https://gh-proxy.com/` 或 `https://gh-proxy.org/` 辅助访问对应 release 地址排障
-- 示例：
-  - `https://gh-proxy.org/https://github.com/biliup/biliup/releases/download/v1.1.29/biliupR-v1.1.29-aarch64-linux.tar.xz`
+- 下载入口必须保持 lock 中的官方 GitHub HTTPS release URL；不要改写到代理域名。网络受限时应修复获准的 GitHub egress，不应绕过域名和哈希约束
 
 ## For AI Agents
 

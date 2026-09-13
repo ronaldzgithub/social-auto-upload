@@ -1,0 +1,43 @@
+{
+  "schema_version": "social-auto-upload.biliup-lock.v1",
+  "version": "v1.2.4",
+  "source_release": "https://github.com/biliup/biliup/releases/tag/v1.2.4",
+  "platforms": {
+    "windows-x86_64": {
+      "asset_name": "biliupR-v1.2.4-x86_64-windows.zip",
+      "asset_url": "https://github.com/biliup/biliup/releases/download/v1.2.4/biliupR-v1.2.4-x86_64-windows.zip",
+      "size": 12223616,
+      "sha256": "cb5af47aeaffd63719c94fa354a4d1404dd8437b6cc215513ec4e6054177c93e"
+    },
+    "linux-x86_64": {
+      "asset_name": "biliupR-v1.2.4-x86_64-linux.tar.xz",
+      "asset_url": "https://github.com/biliup/biliup/releases/download/v1.2.4/biliupR-v1.2.4-x86_64-linux.tar.xz",
+      "size": 8510708,
+      "sha256": "428e3365357d495884111787bf27f10c6abc8d981502f336acf542e7361dae0e"
+    },
+    "linux-aarch64": {
+      "asset_name": "biliupR-v1.2.4-aarch64-linux.tar.xz",
+      "asset_url": "https://github.com/biliup/biliup/releases/download/v1.2.4/biliupR-v1.2.4-aarch64-linux.tar.xz",
+      "size": 7354244,
+      "sha256": "902b4e45f1b1e5b097b598c420c256c1378c7d5fbbd079291e77a472d8e0667e"
+    },
+    "linux-arm": {
+      "asset_name": "biliupR-v1.2.4-arm-linux.tar.xz",
+      "asset_url": "https://github.com/biliup/biliup/releases/download/v1.2.4/biliupR-v1.2.4-arm-linux.tar.xz",
+      "size": 7442352,
+      "sha256": "b85a007a68d3f2f2c48be2795557f8012f494fc65fe03e8f67e636604ff0688f"
+    },
+    "macos-x86_64": {
+      "asset_name": "biliupR-v1.2.4-x86_64-macos.tar.xz",
+      "asset_url": "https://github.com/biliup/biliup/releases/download/v1.2.4/biliupR-v1.2.4-x86_64-macos.tar.xz",
+      "size": 8318508,
+      "sha256": "3da265358b84aff2497936cad0fdeec718987b1b955fd1a04637c145e824f1d2"
+    },
+    "macos-aarch64": {
+      "asset_name": "biliupR-v1.2.4-aarch64-macos.tar.xz",
+      "asset_url": "https://github.com/biliup/biliup/releases/download/v1.2.4/biliupR-v1.2.4-aarch64-macos.tar.xz",
+      "size": 7280384,
+      "sha256": "f2341fbb2c95be4f0934d070d13e3891ff83a68fa35c20bcebc5518bee7cf15b"
+    }
+  }
+}
